@@ -52,7 +52,27 @@
     justify-content: space-between;
     align-items: center;
   }
-  header span.status { font-size: 12px; color: #9c9c9c; font-weight: 400; }
+  #setup select {
+    width: 100%;
+    padding: 10px 12px;
+    margin: 8px 0 16px;
+    border: 1px solid #eadfd8;
+    border-radius: 8px;
+    font-size: 14px;
+    background: white;
+  }
+  #setup .hint { font-size: 12px; color: #9c9c9c; margin: -10px 0 12px; }
+
+  header { position: relative; }
+  #model-badge {
+    font-size: 12px;
+    color: #b5563a;
+    background: #fdecea;
+    padding: 3px 10px;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+
 
   #chat {
     flex: 1;
@@ -118,13 +138,21 @@
   <h2>連接後端</h2>
   <label>Railway 網址</label>
   <input id="base-url" placeholder="https://your-app.up.railway.app" />
+  <button onclick="loadModels()" style="background:#eadfd8; color:#4b3a34; margin-bottom:16px;">抓取可用模型</button>
+
+  <div id="model-picker" class="hidden">
+    <label>選擇模型</label>
+    <select id="model-select"></select>
+    <div class="hint" id="model-count-hint"></div>
+  </div>
+
   <button onclick="startChat()">開始聊天</button>
 </div>
 
 <div id="chat-screen" class="hidden" style="display:flex; flex-direction:column; height:100vh;">
   <header>
     林傑墨
-    <span class="status" id="status-text">已連接</span>
+    <span id="model-badge" onclick="backToSetup()" title="點擊重新選擇模型"></span>
   </header>
   <div id="chat"></div>
   <div id="input-bar">
@@ -136,15 +164,60 @@
 <script>
 let BASE_URL = "";
 let history = [];
+let SELECTED_MODEL = "";
 const FRONTEND_KEY = "Peachy123"; // 跟 Railway 環境變數 FRONTEND_ACCESS_KEY 要一致
 
-function startChat() {
+async function loadModels() {
   const url = document.getElementById("base-url").value.trim().replace(/\/$/, "");
-  if (!url) { alert("請輸入後端網址"); return; }
+  if (!url) { alert("請先輸入後端網址"); return; }
   BASE_URL = url;
+
+  const hint = document.getElementById("model-count-hint");
+  hint.textContent = "抓取中...";
+
+  try {
+    const res = await fetch(BASE_URL + "/v1/models", {
+      headers: { "Authorization": "Bearer " + FRONTEND_KEY }
+    });
+    const data = await res.json();
+    const models = (data.data || []).map(m => m.id).filter(Boolean);
+
+    const select = document.getElementById("model-select");
+    select.innerHTML = "";
+
+    if (models.length === 0) {
+      hint.textContent = "沒有抓到任何模型，請檢查後端 THIRD_PARTY_API_KEY 設定";
+      return;
+    }
+
+    models.forEach(id => {
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = id;
+      select.appendChild(opt);
+    });
+
+    document.getElementById("model-picker").classList.remove("hidden");
+    hint.textContent = "共 " + models.length + " 個模型可選";
+  } catch (err) {
+    hint.textContent = "抓取失敗：" + err.message;
+  }
+}
+
+function startChat() {
+  const select = document.getElementById("model-select");
+  if (!select.value) { alert("請先按「抓取可用模型」並選一個模型"); return; }
+  SELECTED_MODEL = select.value;
+
   document.getElementById("setup").classList.add("hidden");
   document.getElementById("chat-screen").classList.remove("hidden");
+  document.getElementById("model-badge").textContent = SELECTED_MODEL;
   document.getElementById("msg-input").focus();
+}
+
+function backToSetup() {
+  document.getElementById("chat-screen").classList.add("hidden");
+  document.getElementById("setup").classList.remove("hidden");
 }
 
 function appendMsg(role, text) {
@@ -166,8 +239,9 @@ async function sendMessage() {
   appendMsg("user", text);
   history.push({ role: "user", content: text });
 
-  const statusEl = document.getElementById("status-text");
-  statusEl.textContent = "思考中...";
+  const badge = document.getElementById("model-badge");
+  const originalBadgeText = badge.textContent;
+  badge.textContent = "思考中...";
 
   const assistantDiv = appendMsg("assistant", "");
   let fullText = "";
@@ -180,7 +254,7 @@ async function sendMessage() {
         "Authorization": "Bearer " + FRONTEND_KEY
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: SELECTED_MODEL,
         messages: history,
         stream: true
       })
@@ -190,7 +264,7 @@ async function sendMessage() {
       const errText = await res.text();
       assistantDiv.remove();
       appendMsg("system", "錯誤：" + res.status + " " + errText.slice(0, 200));
-      statusEl.textContent = "連接失敗";
+      badge.textContent = originalBadgeText;
       return;
     }
 
@@ -227,12 +301,12 @@ async function sendMessage() {
     } else {
       assistantDiv.textContent = "（沒有收到回覆，請檢查後端 log）";
     }
-    statusEl.textContent = "已連接";
+    badge.textContent = originalBadgeText;
 
   } catch (err) {
     assistantDiv.remove();
     appendMsg("system", "連線失敗：" + err.message);
-    statusEl.textContent = "連接失敗";
+    badge.textContent = originalBadgeText;
   }
 }
 </script>
