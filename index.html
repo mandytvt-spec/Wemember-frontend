@@ -146,6 +146,9 @@
     <div class="hint" id="model-count-hint"></div>
   </div>
 
+  <label>角色設定（System Prompt）</label>
+  <textarea id="system-prompt" rows="6" placeholder="貼上妳原本在 KELIVO 用的林傑墨人設..." style="width:100%; padding:10px 12px; margin:8px 0 16px; border:1px solid #eadfd8; border-radius:8px; font-size:14px; font-family:inherit; resize:vertical;"></textarea>
+
   <button onclick="startChat()">開始聊天</button>
 </div>
 
@@ -165,6 +168,7 @@
 let BASE_URL = "";
 let history = [];
 let SELECTED_MODEL = "";
+let SYSTEM_PROMPT = "";
 const FRONTEND_KEY = "Peachy123"; // 跟 Railway 環境變數 FRONTEND_ACCESS_KEY 要一致
 
 async function loadModels() {
@@ -208,6 +212,12 @@ function startChat() {
   const select = document.getElementById("model-select");
   if (!select.value) { alert("請先按「抓取可用模型」並選一個模型"); return; }
   SELECTED_MODEL = select.value;
+  SYSTEM_PROMPT = document.getElementById("system-prompt").value.trim();
+
+  history = [];
+  if (SYSTEM_PROMPT) {
+    history.push({ role: "system", content: SYSTEM_PROMPT });
+  }
 
   document.getElementById("setup").classList.add("hidden");
   document.getElementById("chat-screen").classList.remove("hidden");
@@ -286,6 +296,12 @@ async function sendMessage() {
         if (payload === "[DONE]") continue;
         try {
           const json = JSON.parse(payload);
+          if (json.error) {
+            assistantDiv.remove();
+            appendMsg("system", "後端錯誤：" + (json.error.message || JSON.stringify(json.error)));
+            badge.textContent = originalBadgeText;
+            return;
+          }
           const delta = json.choices?.[0]?.delta?.content;
           if (delta) {
             fullText += delta;
